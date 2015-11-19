@@ -7,5 +7,5 @@ if [[ "$SLURM_PROCID" = "0" ]]; then
 elif [[ "$SLURM_PROCID" = "1" ]]; then
   ipcontroller --ip='*'
 elif [[ "$SLURM_PROCID" = "2" ]]; then
-  mpirun --bind-to=none -n "$((SLURM_NTASKS))" ipengine
+  mpirun --bind-to=none -n "$((SLURM_NTASKS-2))" ipengine
 fi
