@@ -3,12 +3,24 @@
 Script for launching a Jupyter notebook and IPython parallel engines on the Abel cluster at UiO
 
 Usage: ./launchabel --account=ACCT -n 10
+
+You can setup SBATCH with a file (sbatch.sh) containing:
+
+    #SBATCH --account=foo
+    #SBATCH --mem-per-cpu=3900M
+    #SBATCH --ntasks=16
+
+and load it with
+
+    ./launchabel --sbatch-file=./sbatch.sh
+
 """
 from __future__ import print_function
 
 tpls = {'setup': '''
-mkdir -p $HOME/launchable
-tempdir=$(mktemp -d --tmpdir="$HOME/launchable")
+set -e
+mkdir -p $HOME/launchabel
+tempdir=$(mktemp -d --tmpdir="$HOME/launchabel")
 TUNNEL_PORT={tunnel_port}
 NB_PORT={nb_port}
 LOGIN_NODE=$(hostname)
@@ -20,11 +32,9 @@ run="$tempdir/run.sh"
 
 cat >"$batch" <<EOL
 #!/bin/bash
-#SBATCH --account=nn9279k
-#SBATCH --time=00:15:00
-#SBATCH --mem-per-cpu=3900M
-#SBATCH --ntasks={n}
-rm -rf ~/.ipython/profile_default/security
+{sbatch}
+# scrub old connection files
+rm -rf ~/.ipython/profile_default/security/ipcontroller*
 
 srun "$run"
 EOL
@@ -33,7 +43,7 @@ cat >"$run" <<EOL
 #!/bin/bash
 source /etc/profile
 source /cluster/bin/jobsetup
-source /usit/abel/u1/oyvinev/fenics1.6_jupyter
+{setup}
 
 if [[ "\$SLURM_PROCID" = "0" ]]; then
   ssh -R $TUNNEL_PORT:localhost:$NB_PORT $LOGIN_NODE -f -N
@@ -58,7 +68,7 @@ test -z "$jobid" && exit 1
 
 state="wait"
 while [[ "$state" = "wait" ]]; do
-  echo .
+  echo -n .
   # check squeue
   test -z "$(squeue -u `whoami` | grep $jobid)" && state='FAILED'
   curl -s http://localhost:$TUNNEL_PORT 2>&1 >/dev/null && state=AOK || sleep 1
@@ -80,6 +90,7 @@ done
 '''}
 
 import argparse
+import os
 from random import randint
 import sys
 import webbrowser
@@ -90,24 +101,39 @@ import pexpect
 def expect_echo(p):
     p.sendline('###END###')
     p.expect('###END###')
+    print(p.before)
 
+def expect_ok(p):
+    p.sendline("echo 'AOK'")
+    expect_echo(p)
+    try:
+        p.expect('AOK')
+    except pexpect.EOF:
+        raise RuntimeError("Command failed: %s" % p.before)
+    except pexpect.TIMEOUT:
+        raise RuntimeError("Timout: %s" % p.before)
+    
 
 def run_job(options):
     ns = options.__dict__
     print("Tunneling {local_port} to {host}:{tunnel_port}".format(**ns))
-    p = pexpect.spawn('ssh', [
+    if sys.version_info > (3,):
+        spawn = pexpect.spawnu
+    else:
+        spawn = pexpect.spawn
+    p = spawn('ssh', [
             '-L',
             '%i:localhost:%i' % (options.local_port, options.tunnel_port),
             options.host,
             'bash',
     ])
-    p.logfile = sys.stderr
+    p.logfile_read = sys.stderr
     print('setup')
     p.send(tpls['setup'].format(**ns))
-    expect_echo(p)
+    expect_ok(p)
     print('scripts')
     p.send(tpls['scripts'].format(**ns))
-    expect_echo(p)
+    expect_ok(p)
     print('run')
     p.send(tpls['run'].format(**ns))
     expect_echo(p)
@@ -130,12 +156,48 @@ def run_job(options):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--n', type=int, default=4)
-    parser.add_argument('--port', dest='local_port', type=int, default=9999)
-    parser.add_argument('--tunnel-port', type=int, default=randint(49152, 65535))
-    parser.add_argument('--nb-port', type=int, default=randint(49152, 65535))
-    parser.add_argument('--host', type=str, default='abel.uio.no')
-    options = parser.parse_args()
+    parser.add_argument('-n', type=int, default=4,
+        help="The number of *engines* to run. The number of allocated tasks will be n+2.")
+    parser.add_argument('--port', dest='local_port', type=int, default=9999,
+        help="The port on this machine that will be forwarded to the work node.")
+    parser.add_argument('--tunnel-port', type=int, default=randint(49152, 65535),
+        help="The tunnel port on the login node used to forward the connection [default: IANA random]")
+    parser.add_argument('--nb-port', type=int, default=randint(49152, 65535),
+        help="The actual port on the work node for the notebook server [default: IANA random]")
+    parser.add_argument('--host', type=str, default='abel.uio.no',
+        help="SSH host to login to")
+    parser.add_argument('--time', type=str, default='00:15:00',
+        help="Job time limit.")
+    parser.add_argument('--account', type=str, default=os.environ.get('ABEL_ACCOUNT', ''),
+        help="(REQUIRED) Abel account. Read from ABEL_ACCOUNT env if defined.")
+    parser.add_argument('--mem', type=str, default='1000M')
+    parser.add_argument('--setup', type=str,
+        default=os.environ.get('ABEL_SETUP') or 'test -f ~/.launchabel_setup && source ~/.launchabel_setup',
+        help="""Code to run at setup of the job.
+        Typically sourcing a shell init script.
+        """)
+    parser.add_argument('--sbatch-file', type=str, default=None,
+        help="If defined, use this file to set up SBATCH args instead of specifying them on the command-line.")
+    try:
+        idx = sys.argv.index('--')
+    except ValueError:
+        argv = sys.argv[1:]
+        sbatch_args = []
+    else:
+        argv = sys.argv[:idx]
+        sbatch_args = sys.argv[idx+1:]
+    options = parser.parse_args(argv)
+    if options.sbatch_file:
+        with open(options.sbatch_file) as f:
+            options.sbatch = f.read()
+    else:
+        if options.account:
+            sbatch_args.append('--account=%s' % options.account)
+        sbatch_args.append('--ntasks=%i' % (options.n + 2))
+        sbatch_args.append('--time=%s' % options.time)
+        sbatch_args.append('--mem-per-cpu=%s' % options.mem)
+        sbatch_lines = [ '#SBATCH ' + arg for arg in sbatch_args ]
+        options.sbatch = '\n'.join(sbatch_lines)
     p = run_job(options)
     print("Opening browser")
     webbrowser.open('http://localhost:9999')
