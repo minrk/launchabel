@@ -130,10 +130,10 @@ def main():
     parser.add_argument('--port', dest='local_port', type=int, default=9999)
     parser.add_argument('--tunnel-port', type=int, default=randint(49152, 65535))
     parser.add_argument('--nb-port', type=int, default=randint(49152, 65535))
-    parser.add_argument('--host', type=str, default='kerbin')
+    parser.add_argument('--host', type=str, default='abel.uio.no')
     options = parser.parse_args()
     p = run_job(options)
-    print("done")
+    print("Opening browser")
     webbrowser.open('http://localhost:9999')
     # wait for exit
     p.expect(pexpect.EOF, timeout=None)
