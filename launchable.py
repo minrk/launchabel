@@ -20,8 +20,10 @@ cat >"$batch" <<EOL
 #!/bin/bash
 #SBATCH --account=nn9279k
 #SBATCH --time=00:15:00
-#SBATCH --mem-per-cpu=100M
+#SBATCH --mem-per-cpu=3900M
 #SBATCH --ntasks={n}
+rm -rf ~/.ipython/profile_default/security
+
 srun "$run"
 EOL
 
@@ -37,7 +39,7 @@ if [[ "\$SLURM_PROCID" = "0" ]]; then
 elif [[ "\$SLURM_PROCID" = "1" ]]; then
   ipcontroller --ip='*'
 elif [[ "\$SLURM_PROCID" = "2" ]]; then
-  mpirun --bind-to none -n "\$((SLURM_NTASKS-2))" ipengine
+  mpirun --bind-to none -n "\$((SLURM_NTASKS-2))" ipengine --timeout=60
 fi
 
 EOL
