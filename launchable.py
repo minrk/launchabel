@@ -111,7 +111,7 @@ def run_job(options):
     p.expect('\r\n')
     jobid = int(p.before)
     try:
-        p.expect(['AOK', 'FAILED'], timeout=60)
+        p.expect(['AOK', 'FAILED'], timeout=600)
     except pexpect.EOF:
         print("Failed")
         print(p.before, file=sys.stderr)
