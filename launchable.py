@@ -4,24 +4,22 @@ Usage: python launchable.py
 """
 from __future__ import print_function
 
-tpls = {'setup': u'''
-source /etc/profile
+tpls = {'setup': '''
 mkdir -p $HOME/launchable
-tempdir=$(mktemp -d --tmpdir=$HOME/launchable)
-echo "$tempdir"
+tempdir=$(mktemp -d --tmpdir="$HOME/launchable")
 TUNNEL_PORT={tunnel_port}
 NB_PORT={nb_port}
 LOGIN_NODE=$(hostname)
 ''',
 
-'scripts': u'''
+'scripts': '''
 batch="$tempdir/batch.sh"
 run="$tempdir/run.sh"
 
 cat >"$batch" <<EOL
 #!/bin/bash
 #SBATCH --account=nn9279k
-#SBATCH --time=00:05:00
+#SBATCH --time=00:15:00
 #SBATCH --mem-per-cpu=100M
 #SBATCH --ntasks={n}
 srun "$run"
@@ -49,7 +47,7 @@ echo BATCH:$batch
 echo RUN:$run
 ''',
 
-'run': u'''
+'run': '''
 jobid=$(/cluster/bin/sbatch $batch | awk '{{print $4}}')
 echo "job id: $jobid"
 test -z "$jobid" && exit 1
@@ -86,14 +84,14 @@ import pexpect
 
 
 def expect_echo(p):
-    p.sendline(u'###END###')
-    p.expect(u'###END###')
+    p.sendline('###END###')
+    p.expect('###END###')
 
 
 def run_job(options):
     ns = options.__dict__
     print("Tunneling {local_port} to {host}:{tunnel_port}".format(**ns))
-    p = pexpect.spawnu('ssh', [
+    p = pexpect.spawn('ssh', [
             '-L',
             '%i:localhost:%i' % (options.local_port, options.tunnel_port),
             options.host,
@@ -110,10 +108,10 @@ def run_job(options):
     p.send(tpls['run'].format(**ns))
     expect_echo(p)
     p.expect('job id:')
-    p.expect(u'\r\n')
+    p.expect('\r\n')
     jobid = int(p.before)
     try:
-        p.expect([u'AOK', u'FAILED'], timeout=60)
+        p.expect(['AOK', 'FAILED'], timeout=60)
     except pexpect.EOF:
         print("Failed")
         print(p.before, file=sys.stderr)
