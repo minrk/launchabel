@@ -4,7 +4,7 @@ Usage: python launchable.py
 """
 from __future__ import print_function
 
-tpls = {'setup': '''
+tpls = {'setup': u'''
 source /etc/profile
 mkdir -p $HOME/launchable
 tempdir=$(mktemp -d --tmpdir=$HOME/launchable)
@@ -14,7 +14,7 @@ NB_PORT={nb_port}
 LOGIN_NODE=$(hostname)
 ''',
 
-'scripts': '''
+'scripts': u'''
 batch="$tempdir/batch.sh"
 run="$tempdir/run.sh"
 
@@ -49,7 +49,7 @@ echo BATCH:$batch
 echo RUN:$run
 ''',
 
-'run': '''
+'run': u'''
 jobid=$(/cluster/bin/sbatch $batch | awk '{{print $4}}')
 echo "job id: $jobid"
 test -z "$jobid" && exit 1
@@ -86,8 +86,8 @@ import pexpect
 
 
 def expect_echo(p):
-    p.sendline('###END###')
-    p.expect('###END###')
+    p.sendline(u'###END###')
+    p.expect(u'###END###')
 
 
 def run_job(options):
@@ -110,10 +110,10 @@ def run_job(options):
     p.send(tpls['run'].format(**ns))
     expect_echo(p)
     p.expect('job id:')
-    p.expect('\r\n')
+    p.expect(u'\r\n')
     jobid = int(p.before)
     try:
-        p.expect(['AOK', 'FAILED'], timeout=60)
+        p.expect([u'AOK', u'FAILED'], timeout=60)
     except pexpect.EOF:
         print("Failed")
         print(p.before, file=sys.stderr)
