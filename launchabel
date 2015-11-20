@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 """
-Usage: python launchable.py
+Script for launching a Jupyter notebook and IPython parallel engines on the Abel cluster at UiO
+
+Usage: ./launchabel --account=ACCT -n 10
 """
 from __future__ import print_function
 
